@@ -22,7 +22,7 @@ exports.increaseLikeComment = async (req, res) => {
     try {
 
         const { comment_id } = req.body;
-        
+
         const [result] = await pool.query(
             "UPDATE StoryComments SET `like` = `like` + 1 WHERE comment_id= ?",
             [comment_id]
@@ -34,3 +34,4 @@ exports.increaseLikeComment = async (req, res) => {
         res.status(500).json({ success: false, message: "Error increase", error: error.message });
     }
 };
+

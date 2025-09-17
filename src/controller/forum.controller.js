@@ -16,9 +16,6 @@ exports.createPost = async (req, res) => {
 },
     exports.getPost = async (req, res) => {
         try {
-
-            const { TopicId } = req.params
-
             const [result] = await pool.query(
                 `SELECT 
                     p.*,
@@ -39,9 +36,7 @@ exports.createPost = async (req, res) => {
                     FROM ForumComments
                     GROUP BY post_id
                 ) c ON p.post_id = c.post_id
-                LEFT JOIN TopicCategory t ON p.topic_id = t.topic_id;
-`,
-                [TopicId]
+                LEFT JOIN TopicCategory t ON p.topic_id = t.topic_id;`,
             );
 
             res.status(201).json({ success: true, data: result });
@@ -54,7 +49,6 @@ exports.createPost = async (req, res) => {
         try {
 
             const { TopicId } = req.params
-
             const [result] = await pool.query(
                 `SELECT 
                 p.*,

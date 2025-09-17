@@ -15,4 +15,11 @@ router.delete("/:id", storiesController.deleteStory);
 router.get("/category/:id", storiesController.getStoryByCategory)
 router.get("/story-allinfo/:id", storiesController.getAllDataStory)
 router.get("/:id/comments", storiesController.getCommentStory)
+router.post("/story/reading", storiesController.insertUserReadingBook)
+router.get("/user/reading/:user_id", storiesController.getUserReadingList)
+router.post("/user-story/favorite", storiesController.addFavorite)
+
+router.get("/check/storylike", storiesController.checkFavoriteData)
+
+router.get("/favorite/:userId", storiesController.getListFavorites)
 module.exports = router;

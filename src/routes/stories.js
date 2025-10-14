@@ -5,7 +5,8 @@ const router = express.Router();
 // Create
 router.post("/", upload.single("cover"), storiesController.createStory);
 
-// Update
+//get
+router.get("/story/get-all", storiesController.getAllStory)
 router.get("/story/recommendations", storiesController.getTopStoryRecomment)
 router.get("/:id", storiesController.getStory);
 router.get("/story/:id", storiesController.getStoryById);

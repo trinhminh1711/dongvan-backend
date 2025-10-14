@@ -109,6 +109,24 @@ exports.getStoryById = async (req, res) => {
     }
 };
 
+exports.getAllStory = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT 
+                s.*, 
+                COUNT(c.chap_number) AS total_chapters
+                FROM Stories s
+                LEFT JOIN Chapters c 
+                ON s.story_id = c.story_id
+                GROUP BY s.story_id;`,
+        );
+
+        res.json(rows);
+    } catch (err) {
+        console.error("Lỗi lấy stories:", err);
+        res.status(500).json({ error: "Lỗi server" });
+    }
+};
 
 exports.getStory = async (req, res) => {
     try {
@@ -191,7 +209,8 @@ exports.getStoryComplete = async (req, res) => {
       s.*,
       c.chap_number,
       g.name AS genre_name,
-      u.username AS author_name
+      u.username AS author_name,
+      u.user_id AS author_id
    FROM Stories s
    JOIN Chapters c 
        ON c.story_id = s.story_id

@@ -45,7 +45,7 @@ exports.register = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-     if (err.code === "ER_DUP_ENTRY") {
+    if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         success: false,
         error: "Email đã tồn tại trong hệ thống"

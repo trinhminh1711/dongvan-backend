@@ -19,8 +19,6 @@ exports.createChapter = async (req, res) => {
 };
 
 exports.markRead = async (req, res) => {
-    console.log("abc");
-    
     const { storyId, chapNumber } = req.params
     const { user_id } = req.body
     try {
@@ -101,33 +99,57 @@ async function hasPurchased(userId, storyId, chapNumber) {
 }
 
 exports.checkChapterStoryWithIdChap = async (req, res) => {
-    try {
-        const { storyId, chapterId, userId } = req.params;
-        const purchased = await hasPurchased(userId, storyId, chapterId);
-        if (purchased) {
-            const [rows] = await pool.query(
-                `SELECT c.*,  s.title AS story_title FROM Chapters c JOIN Stories s ON c.story_id = s.story_id WHERE c.chap_number = ? AND c.story_id = ?`,
-                [chapterId, storyId]
-            );
-            if (rows.length === 0) {
-                return res.status(404).json({ message: "Chưa có chương nào" });
-            }
-            res.json({ IsPurchased: true, data: rows[0] });
-        }
-        else {
-            const [rows] = await pool.query(
-                `SELECT c.*,  s.title AS story_title FROM Chapters c JOIN Stories s ON c.story_id = s.story_id WHERE c.chap_number = ? AND c.story_id = ?`,
-                [chapterId, storyId]
-            );
-            const content = rows[0].content;
-            const halfLength = Math.floor(content.length / 10);
-            rows[0].content = content.substring(0, halfLength);
-            res.json({ IsPurchased: false, data: rows[0] });
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Lỗi server" });
+  try {
+    const { storyId, chapterId, userId } = req.params;
+
+    // ✅ Kiểm tra xem user đã mua chapter này chưa
+    const purchased = await hasPurchased(userId, storyId, chapterId);
+
+    // ✅ Nếu đã mua → trả full content
+    if (purchased) {
+      const [rows] = await pool.query(
+        `SELECT c.*, s.title AS story_title 
+         FROM Chapters c 
+         JOIN Stories s ON c.story_id = s.story_id 
+         WHERE c.chap_number = ? AND c.story_id = ?`,
+        [chapterId, storyId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "Chưa có chương nào" });
+      }
+
+      return res.json({ IsPurchased: true, data: rows[0] });
     }
+
+    // ✅ Nếu chưa mua → chỉ trả về một phần nội dung
+    const [rows] = await pool.query(
+      `SELECT c.*, s.title AS story_title 
+       FROM Chapters c 
+       JOIN Stories s ON c.story_id = s.story_id 
+       WHERE c.chap_number = ? AND c.story_id = ?`,
+      [chapterId, storyId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ IsPurchased: false, message: "Không tìm thấy chương" });
+    }
+
+    const content = rows[0].content;
+    if (!content) {
+      return res.json({ IsPurchased: false, data: "Không tìm thấy nội dung" });
+    }
+
+    // ✅ Cắt nội dung demo (1/10 độ dài)
+    const previewLength = Math.floor(content.length / 10);
+    rows[0].content = content.substring(0, previewLength) + " ...";
+
+    res.json({ IsPurchased: false, data: rows[0] });
+
+  } catch (err) {
+    console.error("Lỗi checkChapterStoryWithIdChap:", err);
+    res.status(500).json({ error: "Lỗi server" });
+  }
 };
 
 
@@ -145,7 +167,7 @@ exports.getChapterLastestUpdate = async (req, res) => {
             ON c.story_id = latest.story_id
             AND c.chap_number = latest.latest_chap
             ORDER BY c.created_at DESC
-            LIMIT 10;
+            LIMIT 15;
             `,
         );
 

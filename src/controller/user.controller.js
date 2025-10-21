@@ -55,3 +55,35 @@ exports.getUserInfomation = async (req, res) => {
     });
   }
 };
+
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { status } = req.body
+
+    // Chỉ cho phép 2 trạng thái hợp lệ
+    const validStatus = ['active', 'denied']
+    if (!validStatus.includes(status)) {
+      return res.status(400).json({ message: 'Trạng thái không hợp lệ' })
+    }
+
+    // Cập nhật trong DB
+    const [result] = await pool.query(
+      'UPDATE Users SET status = ? WHERE user_id = ?',
+      [status, userId]
+    )
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' })
+    }
+
+    res.status(200).json({
+      message: 'Cập nhật trạng thái thành công',
+      userId,
+      status
+    })
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái:', error)
+    res.status(500).json({ message: 'Lỗi server' })
+  }
+}

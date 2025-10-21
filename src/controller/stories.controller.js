@@ -98,7 +98,7 @@ exports.getStoryById = async (req, res) => {
     try {
         const story_id = req.params.id;
         const [rows] = await pool.query(
-            ` SELECT * from Stories where story_id = ?`,
+            ` SELECT * from Stories where story_id = ?  AND status = 'published'`,
             [story_id]
         );
 
@@ -118,6 +118,7 @@ exports.getAllStory = async (req, res) => {
                 FROM Stories s
                 LEFT JOIN Chapters c 
                 ON s.story_id = c.story_id
+                WHERE s.status = 'published'
                 GROUP BY s.story_id;`,
         );
 
@@ -161,7 +162,7 @@ LEFT JOIN (
 ) lc ON lc.story_id = s.story_id
 LEFT JOIN UserReading ur 
        ON ur.story_id = s.story_id
-WHERE s.author_id = ?
+WHERE s.author_id = ? AND s.status = 'published'
 GROUP BY 
     s.story_id, s.create_at, s.title, s.description, 
     s.author_id, s.urlImg, s.genres_id, 
@@ -218,7 +219,7 @@ exports.getStoryComplete = async (req, res) => {
        ON s.genres_id = g.genre_id
    JOIN Users u 
        ON s.author_id = u.user_id
-   WHERE c.is_final = 1
+   WHERE c.is_final = 1  AND s.status = 'published'
    LIMIT ?`,
             [limit]
         )
@@ -251,6 +252,7 @@ exports.getTopStoryReaded = async (req, res) => {
                 ON s.story_id = c.story_id
             JOIN Users u 
                 ON s.author_id = u.user_id
+                WHERE s.status = 'published'
             GROUP BY s.story_id, s.title, s.urlImg, s.author_id, u.username
             ORDER BY total_reads DESC
             LIMIT ?;`,
@@ -270,7 +272,7 @@ exports.getStoryByCategory = async (req, res) => {
         const categoryId = req.params.id;
 
         const [rows] = await pool.query(
-            `SELECT s.story_id, s.title, s.description, s.author_id, s.urlImg,s.link_forum, s.create_at, g.name AS genre_name ,g.description AS genre_description FROM Stories s JOIN Genres g ON g.genre_id = s.genres_id WHERE g.genre_id = ?`,
+            `SELECT s.story_id, s.title, s.description, s.author_id, s.urlImg,s.link_forum, s.create_at, g.name AS genre_name ,g.description AS genre_description FROM Stories s JOIN Genres g ON g.genre_id = s.genres_id WHERE g.genre_id = ?   AND s.status = 'published';`,
             [categoryId]
         );
 
@@ -325,7 +327,7 @@ LEFT JOIN (
     GROUP BY story_id
 ) user_reads
     ON user_reads.story_id = s.story_id
-WHERE s.story_id = ?
+WHERE s.story_id = ? AND s.status = 'published'
 ORDER BY c.chap_number ASC;
 
 `,
@@ -416,7 +418,7 @@ exports.getUserReadingList = async (req, res) => {
                 GROUP BY story_id
             ) story_vip
                 ON story_vip.story_id = ur.story_id
-            WHERE ur.user_id = ?
+            WHERE ur.user_id = ? AND s.status = 'published'
             ORDER BY ur.last_read_at DESC;
 
             `,
@@ -496,7 +498,7 @@ exports.getListFavorites = async (req, res) => {
             ON sf.user_id = u.user_id
         LEFT JOIN Chapters c
             ON c.story_id = s.story_id
-        WHERE sf.user_id = ?
+        WHERE sf.user_id = ? AND s.status = 'published'
         GROUP BY 
             sf.user_id,
             u.username,
@@ -537,7 +539,7 @@ exports.getTopStoryReadedForMonth = async (req, res) => {
         JOIN Users u 
             ON s.author_id = u.user_id
         WHERE YEAR(cr.read_at) = YEAR(CURDATE())
-        AND MONTH(cr.read_at) = MONTH(CURDATE())
+        AND MONTH(cr.read_at) = MONTH(CURDATE()) AND s.status = 'published'
         GROUP BY s.story_id, s.title, s.urlImg, s.author_id, u.username
         ORDER BY total_reads DESC
             LIMIT ?;`,
@@ -572,6 +574,7 @@ exports.getTopAuthorForWeek = async (req, res) => {
                 ON s.story_id = c.story_id
             JOIN Users u 
                 ON s.author_id = u.user_id
+                WHERE s.status = 'published'
             GROUP BY s.author_id, u.username, u.link_thumbnail
             ORDER BY total_reads DESC
             LIMIT ?;`,
@@ -787,3 +790,59 @@ exports.getTopStoryRecomment = async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+exports.getAllPublishedStories = async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        s.story_id,
+        s.title,
+        s.description,
+        s.urlImg,
+        s.status,
+        s.create_at,
+        u.user_id,
+        u.username AS author_name,
+        u.email
+      FROM Stories s
+      JOIN Users u ON s.author_id = u.user_id
+      ORDER BY s.create_at DESC
+    `);
+
+    return res.json({
+      message: "Lấy danh sách truyện đã đăng thành công",
+      data: rows
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Lỗi máy chủ" });
+  }
+};
+
+exports.updateStoryStatus = async (req, res) => {
+  try {
+    const { storyId } = req.params
+    const { status } = req.body
+
+    // kiểm tra input hợp lệ
+    const validStatus = ['draft', 'pending', 'published', 'denied']
+    if (!validStatus.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' })
+    }
+
+    // cập nhật trong database
+    const [result] = await pool.query(
+      `UPDATE Stories SET status = ? WHERE story_id = ?`,
+      [status, storyId]
+    )
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy truyện' })
+    }
+
+    return res.json({ success: true, message: 'Cập nhật trạng thái thành công' })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ success: false, message: 'Lỗi server' })
+  }
+}
+

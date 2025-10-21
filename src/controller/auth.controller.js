@@ -70,7 +70,7 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     const [rows] = await pool.query(
-      `SELECT user_id, username, email, role, password_hash, provider
+      `SELECT user_id, username, email, role, password_hash, provider, status
        FROM Users WHERE email = ? LIMIT 1`,
       [email]
     );
@@ -81,7 +81,11 @@ exports.login = async (req, res) => {
     if (user.provider !== 'local') {
       return res.status(400).json({ error: `Account registered via ${user.provider}. Please use social login.` });
     }
-
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        error: 'Tài khoản của bạn đã bị khóa, vui lòng liên hệ quản trị viên',
+      });
+    }
     const ok = await bcrypt.compare(password, user.password_hash || '');
     if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
 
@@ -99,5 +103,50 @@ exports.login = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const [users] = await pool.query(`SELECT * FROM Users WHERE email = ?`, [email]);
+    if (users.length === 0)
+      return res.status(404).json({ message: "Email không tồn tại!" });
+
+    // Tạo token reset
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 15 * 60 * 1000); // Hết hạn sau 15 phút
+
+    await pool.query(
+      `UPDATE Users SET reset_token = ?, reset_token_expires = ? WHERE email = ?`,
+      [token, expires, email]
+    );
+
+    // Gửi mail (dùng Gmail hoặc SMTP server của bạn)
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+    });
+
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+
+    await transporter.sendMail({
+      from: `"Support" <${process.env.MAIL_USER}>`,
+      to: email,
+      subject: "Đặt lại mật khẩu của bạn",
+      html: `
+        <p>Bạn vừa yêu cầu đặt lại mật khẩu.</p>
+        <p>Nhấn vào link bên dưới để tạo mật khẩu mới (hết hạn sau 15 phút):</p>
+        <a href="${resetLink}">${resetLink}</a>
+      `,
+    });
+
+    res.json({ message: "Đã gửi email đặt lại mật khẩu!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Lỗi server!" });
   }
 };

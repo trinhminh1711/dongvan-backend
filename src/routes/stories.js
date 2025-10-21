@@ -11,6 +11,8 @@ router.get("/story/recommendations", storiesController.getTopStoryRecomment)
 router.get("/:id", storiesController.getStory);
 router.get("/story/:id", storiesController.getStoryById);
 router.put("/edit-story/:id", upload.single("cover"), storiesController.updateStory);
+router.get('/stories/published', storiesController.getAllPublishedStories);
+
 // Delete
 router.delete("/:id", storiesController.deleteStory);
 router.get("/category/:id", storiesController.getStoryByCategory)
@@ -33,7 +35,7 @@ router.get("/favorite/:userId", storiesController.getListFavorites)
 
 
 
-
+router.put('/update/:storyId/status', storiesController.updateStoryStatus)
 router.post("/unlock-chapter/user/:userId/story/:storyId",storiesController.unlockChapters) ;
 router.get("/:storyId/chapters/count", storiesController.getNumberChapterStory);
 router.get("/:storyId/chapters/user/:userId/notpurchase", storiesController.getNumberChapterStoryNotPurchase);

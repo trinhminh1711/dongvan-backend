@@ -1,7 +1,29 @@
 const pool = require("../config/config.db");
 const cloudinary = require("../config/cloudinary");
 
-// CREATE
+exports.checkOwner = async (req, res) => {
+
+
+    const storyId = req.params.id;
+    const userId = req.user.user_id; // đảm bảo auth middleware set req.user
+    try {
+        const [rows] = await pool.query(
+            "SELECT author_id FROM Stories WHERE story_id = ?",
+            [storyId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: "Story không tồn tại" });
+        }
+
+        const isOwner = rows[0].author_id === userId;
+        return res.json({ success: true, isOwner });
+    } catch (err) {
+        console.error("❌ Error checking owner:", err);
+        return res.status(500).json({ success: false, message: "Lỗi server", error: err.message });
+    }
+};
+
 exports.createStory = async (req, res) => {
     try {
         const { title, description, author_id, link_forum, genres_id } = req.body;
@@ -57,29 +79,60 @@ exports.updateStory = async (req, res) => {
         const { title, genres_id, description } = req.body;
 
         let coverUrl = null;
+
+        // Nếu có file upload -> upload lên Cloudinary
         if (req.file) {
-            await new Promise((resolve, reject) => {
+            coverUrl = await new Promise((resolve, reject) => {
                 const stream = cloudinary.uploader.upload_stream(
                     { folder: "stories_covers" },
                     (error, result) => {
                         if (error) reject(error);
-                        else {
-                            coverUrl = result.secure_url;
-                            resolve();
-                        }
+                        else resolve(result.secure_url);
                     }
                 );
                 stream.end(req.file.buffer);
             });
         }
 
-        await pool.query(
-            "UPDATE Stories SET title=?, genres_id=?, description=?, urlImg=?   WHERE story_id=?",
-            [title, genres_id, description, coverUrl, id]
-        );
-        res.status(201).json({ success: true, message: "update successfull" });
+        // Nếu không có ảnh mới => giữ nguyên ảnh cũ
+        let query = "";
+        let params = [];
+
+        if (coverUrl) {
+            query = `
+        UPDATE Stories 
+        SET title = ?, genres_id = ?, description = ?, urlImg = ? 
+        WHERE story_id = ?
+      `;
+            params = [title, genres_id, description, coverUrl, id];
+        } else {
+            query = `
+        UPDATE Stories 
+        SET title = ?, genres_id = ?, description = ? 
+        WHERE story_id = ?
+      `;
+            params = [title, genres_id, description, id];
+        }
+
+        const [result] = await pool.query(query, params);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: "Story not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Cập nhật thành công!",
+            coverUrl: coverUrl || undefined
+        });
+
     } catch (error) {
-        res.status(500).json({ success: false, message: "Error updating story", error: error.message });
+        console.error("❌ Error updating story:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi khi cập nhật story",
+            error: error.message
+        });
     }
 };
 
@@ -113,13 +166,24 @@ exports.getAllStory = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT 
-                s.*, 
+                s.story_id,
+                s.urlImg,
+                s.title,
+                s.description,
+                s.status,
+                s.author_id,
+                u.username,
+                u.link_thumbnail,
                 COUNT(c.chap_number) AS total_chapters
-                FROM Stories s
-                LEFT JOIN Chapters c 
+            FROM Stories s
+            LEFT JOIN Chapters c 
                 ON s.story_id = c.story_id
-                WHERE s.status = 'published'
-                GROUP BY s.story_id;`,
+            LEFT JOIN Users u 
+                ON s.author_id = u.user_id
+            WHERE s.status = 'published'
+            GROUP BY 
+                s.story_id, s.title, s.description, s.status, s.author_id, u.username, u.link_thumbnail;
+        `,
         );
 
         res.json(rows);
@@ -131,53 +195,55 @@ exports.getAllStory = async (req, res) => {
 
 exports.getStory = async (req, res) => {
     try {
-        const author_id = req.params.id;
+        const author_id = req.params.id
+        const status = req.query.status || 'published' // 👈 thêm dòng này
+
         const [rows] = await pool.query(
             `SELECT 
-    s.create_at,
-    s.story_id,
-    s.title,
-    s.description,
-    s.author_id,
-    s.urlImg,
-    s.genres_id,
-    COALESCE(SUM(c.word_count), 0) AS total_word_count,
-    COALESCE(SUM(c.view_count), 0) AS total_view_count,
-    COALESCE(COUNT(ur.story_id), 0) AS total_reads,
-    lc.chapter_id   AS last_chapter_id,
-    lc.chap_number  AS last_chap_number,
-    lc.is_final     AS last_chapter_is_final,
-    lc.title        AS last_chapter_title
-FROM Stories s
-LEFT JOIN chapters c 
-       ON c.story_id = s.story_id
-LEFT JOIN (
-    SELECT c1.story_id, c1.chapter_id, c1.chap_number, c1.title, c1.is_final
-    FROM chapters c1
-    WHERE c1.chap_number = (
-        SELECT MAX(c2.chap_number)
-        FROM chapters c2
-        WHERE c2.story_id = c1.story_id
-    )
-) lc ON lc.story_id = s.story_id
-LEFT JOIN UserReading ur 
-       ON ur.story_id = s.story_id
-WHERE s.author_id = ? AND s.status = 'published'
-GROUP BY 
-    s.story_id, s.create_at, s.title, s.description, 
-    s.author_id, s.urlImg, s.genres_id, 
-    lc.chapter_id, lc.chap_number, lc.title, lc.is_final;
+          s.create_at,
+          s.story_id,
+          s.title,
+          s.description,
+          s.author_id,
+          s.urlImg,
+          s.genres_id,
+          COALESCE(SUM(c.word_count), 0) AS total_word_count,
+          COALESCE(SUM(c.view_count), 0) AS total_view_count,
+          COALESCE(COUNT(ur.story_id), 0) AS total_reads,
+          lc.chapter_id   AS last_chapter_id,
+          lc.chap_number  AS last_chap_number,
+          lc.is_final     AS last_chapter_is_final,
+          lc.title        AS last_chapter_title
+      FROM Stories s
+      LEFT JOIN chapters c 
+            ON c.story_id = s.story_id
+      LEFT JOIN (
+          SELECT c1.story_id, c1.chapter_id, c1.chap_number, c1.title, c1.is_final
+          FROM chapters c1
+          WHERE c1.chap_number = (
+              SELECT MAX(c2.chap_number)
+              FROM chapters c2
+              WHERE c2.story_id = c1.story_id
+          )
+      ) lc ON lc.story_id = s.story_id
+      LEFT JOIN UserReading ur 
+            ON ur.story_id = s.story_id
+      WHERE s.author_id = ?  AND ( ? = 'all' OR s.status = ? )
+      GROUP BY 
+          s.story_id, s.create_at, s.title, s.description, 
+          s.author_id, s.urlImg, s.genres_id, 
+          lc.chapter_id, lc.chap_number, lc.title, lc.is_final;
+      `,
+            [author_id, status, status] // 👈 truyền status vào query
+        )
 
-`,
-            [author_id]
-        );
-
-        res.json(rows);
+        res.json(rows)
     } catch (err) {
-        console.error("Lỗi lấy stories:", err);
-        res.status(500).json({ error: "Lỗi server" });
+        console.error('Lỗi lấy stories:', err)
+        res.status(500).json({ error: 'Lỗi server' })
     }
-};
+}
+
 exports.getRandomStory = async (req, res) => {
     let limit = parseInt(req.query.limit, 10);
     if (Number.isNaN(limit) || limit <= 0) limit = 10;    // default 10
@@ -286,58 +352,60 @@ exports.getStoryByCategory = async (req, res) => {
 exports.getAllDataStory = async (req, res) => {
     try {
         const story_id = req.params.id;
+        // ✅ Lấy trạng thái từ query hoặc body, mặc định là 'published'
+        const status = req.query.status || req.body.status || 'published';
 
         const [rows] = await pool.query(
-            `SELECT 
-    s.urlImg, 
-    s.story_id, 
-    s.title AS story_title, 
-    s.description, 
-    u.user_id, 
-    u.username AS author_name, 
-    c.chapter_id, 
-    c.chap_number,
-    c.is_vip,
-    c.title AS chapter_title, 
-    c.view_count, 
-    c.word_count, 
-    c.created_at,
-    COALESCE(totals.total_view, 0) AS total_view, 
-    COALESCE(totals.total_word, 0) AS total_word,
-    COALESCE(user_reads.total_reads, 0) AS total_reads
-FROM Stories s
-JOIN Users u 
-    ON s.author_id = u.user_id
-LEFT JOIN Chapters c 
-    ON s.story_id = c.story_id
-LEFT JOIN (
-    SELECT 
-        story_id, 
-        SUM(view_count) AS total_view, 
-        SUM(word_count) AS total_word
-    FROM Chapters 
-    GROUP BY story_id
-) totals 
-    ON totals.story_id = s.story_id
-LEFT JOIN (
-    SELECT 
-        story_id, 
-        COUNT(*) AS total_reads
-    FROM UserReading
-    GROUP BY story_id
-) user_reads
-    ON user_reads.story_id = s.story_id
-WHERE s.story_id = ? AND s.status = 'published'
-ORDER BY c.chap_number ASC;
-
-`,
-            [story_id]
+            `
+      SELECT 
+        s.urlImg, 
+        s.story_id, 
+        s.title AS story_title, 
+        s.description, 
+        u.user_id, 
+        u.username AS author_name, 
+        c.chapter_id, 
+        c.chap_number,
+        c.is_vip,
+        c.title AS chapter_title, 
+        c.view_count, 
+        c.word_count, 
+        c.created_at,
+        COALESCE(totals.total_view, 0) AS total_view, 
+        COALESCE(totals.total_word, 0) AS total_word,
+        COALESCE(user_reads.total_reads, 0) AS total_reads
+      FROM Stories s
+      JOIN Users u 
+        ON s.author_id = u.user_id
+      LEFT JOIN Chapters c 
+        ON s.story_id = c.story_id
+      LEFT JOIN (
+          SELECT 
+              story_id, 
+              SUM(view_count) AS total_view, 
+              SUM(word_count) AS total_word
+          FROM Chapters 
+          GROUP BY story_id
+      ) totals 
+        ON totals.story_id = s.story_id
+      LEFT JOIN (
+          SELECT 
+              story_id, 
+              COUNT(*) AS total_reads
+          FROM UserReading
+          GROUP BY story_id
+      ) user_reads
+        ON user_reads.story_id = s.story_id
+      WHERE s.story_id = ? AND s.status = ?
+      ORDER BY c.chap_number ASC
+      `,
+            [story_id, status]
         );
 
         res.json({ success: true, data: rows });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 };
 
@@ -691,8 +759,10 @@ exports.unlockChapters = async (req, res) => {
     try {
         const { userId, storyId } = req.params;
         const { chapters } = req.body; // ví dụ: { "chapters": [2,3,4] }
-        const pricePerChapter = 5; // số coin 1 chương
 
+        console.log(chapters);
+
+        const pricePerChapter = 5; // số coin 1 chương
         if (!userId || !storyId || !Array.isArray(chapters) || chapters.length === 0) {
             return res.status(400).json({ message: "Invalid data" });
         }
@@ -725,10 +795,12 @@ exports.unlockChapters = async (req, res) => {
 
         // Insert chương đã mở khóa (bỏ qua nếu đã có)
         const values = chapters.map(chap => [userId, storyId, chap]);
+        console.log("💾 Values to insert:", values);
         await conn.query(
             "INSERT IGNORE INTO UserChapters (user_id, story_id, chap_number) VALUES ?",
             [values]
         );
+
         const [[story]] = await conn.query(
             "SELECT title FROM Stories WHERE story_id = ?",
             [storyId]
@@ -791,8 +863,8 @@ exports.getTopStoryRecomment = async (req, res) => {
     }
 };
 exports.getAllPublishedStories = async (req, res) => {
-  try {
-    const [rows] = await pool.query(`
+    try {
+        const [rows] = await pool.query(`
       SELECT 
         s.story_id,
         s.title,
@@ -808,41 +880,143 @@ exports.getAllPublishedStories = async (req, res) => {
       ORDER BY s.create_at DESC
     `);
 
-    return res.json({
-      message: "Lấy danh sách truyện đã đăng thành công",
-      data: rows
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Lỗi máy chủ" });
-  }
+        return res.json({
+            message: "Lấy danh sách truyện đã đăng thành công",
+            data: rows
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "Lỗi máy chủ" });
+    }
 };
 
 exports.updateStoryStatus = async (req, res) => {
-  try {
-    const { storyId } = req.params
-    const { status } = req.body
+    try {
+        const { storyId } = req.params
+        const { status } = req.body
 
-    // kiểm tra input hợp lệ
-    const validStatus = ['draft', 'pending', 'published', 'denied']
-    if (!validStatus.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' })
+        // kiểm tra input hợp lệ
+        const validStatus = ['draft', 'pending', 'published', 'denied']
+        if (!validStatus.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' })
+        }
+
+        // cập nhật trong database
+        const [result] = await pool.query(
+            `UPDATE Stories SET status = ? WHERE story_id = ?`,
+            [status, storyId]
+        )
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy truyện' })
+        }
+
+        return res.json({ success: true, message: 'Cập nhật trạng thái thành công' })
+    } catch (err) {
+        console.error(err)
+        return res.status(500).json({ success: false, message: 'Lỗi server' })
     }
-
-    // cập nhật trong database
-    const [result] = await pool.query(
-      `UPDATE Stories SET status = ? WHERE story_id = ?`,
-      [status, storyId]
-    )
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy truyện' })
-    }
-
-    return res.json({ success: true, message: 'Cập nhật trạng thái thành công' })
-  } catch (err) {
-    console.error(err)
-    return res.status(500).json({ success: false, message: 'Lỗi server' })
-  }
 }
 
+exports.getTopSpendingUsers = async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10; // cho phép truyền limit qua query param
+
+        const [rows] = await pool.query(`
+            SELECT 
+                u.user_id AS user_id,
+                u.username,
+                u.link_thumbnail,
+                u.email,
+                SUM(t.amount) AS total_spent,
+                COUNT(t.id) AS total_transactions
+            FROM TransactionHistory t
+            JOIN users u ON u.user_id = t.user_id
+            WHERE t.direction = 'OUT'
+            GROUP BY u.user_id, u.username, u.email
+            ORDER BY total_spent DESC
+            LIMIT 10
+        `, [limit]);
+
+        res.status(200).json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy danh sách người dùng tiêu nhiều nhất'
+        });
+    }
+};
+
+exports.saveReadingProgress = async (req, res) => {
+    const { user_id, story_id, chapter_id, scroll } = req.body;
+
+    // Kiểm tra dữ liệu đầu vào
+    if (!story_id || !chapter_id) {
+        return res.status(400).json({ error: 'Thiếu story_id hoặc chapter_id' });
+    }
+    console.log(req.body);
+    try {
+        // Ghi hoặc cập nhật tiến độ đọc
+        const [result] = await pool.query(
+            `INSERT INTO ReadingProgress (user_id, story_id, chapter_id, scroll,  updated_at)
+       VALUES (?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE 
+          scroll = VALUES(scroll),
+          updated_at = NOW()`,
+            [user_id, story_id, chapter_id, scroll]
+        )
+
+        // Trả phản hồi cho client
+        res.status(200).json({
+            success: true,
+            message: 'Đã lưu tiến độ đọc thành công',
+            affectedRows: result.affectedRows
+        });
+    } catch (err) {
+        console.error('Lỗi khi lưu tiến độ đọc:', err);
+        res.status(500).json({ error: 'Lỗi server khi lưu tiến độ đọc' });
+    }
+};
+
+exports.getReadingProgress = async (req, res) => {
+    const { storyId } = req.params;
+    const { userId } = req.params || 1; // tạm dùng userId = 1 để test
+
+
+
+    try {
+        const [rows] = await pool.query(
+            `SELECT 
+                rp.story_id,
+                rp.chapter_id,
+                rp.scroll,
+                rp.updated_at,
+                c.title AS chapter_title
+            FROM ReadingProgress rp
+            JOIN Chapters c 
+                ON rp.story_id = c.story_id
+                AND rp.chapter_id = c.chap_number
+            WHERE rp.user_id = ?
+                AND rp.story_id = ?`,
+            [userId, storyId] // 
+        );
+        if (rows.length === 0) {
+            return res.status(200).json({
+                message: 'Chưa có tiến độ đọc',
+                story_id: storyId
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: rows
+        });
+    } catch (err) {
+        console.error('Lỗi khi lấy tiến độ đọc:', err);
+        res.status(500).json({ error: 'Lỗi server khi lấy tiến độ đọc' });
+    }
+};

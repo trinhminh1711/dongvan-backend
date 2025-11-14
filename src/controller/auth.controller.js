@@ -2,7 +2,9 @@ const pool = require('../config/config.db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
-
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const axios = require("axios");
 const signToken = (user) => {
   return jwt.sign(
     { user_id: user.user_id, email: user.email, role: user.role },
@@ -148,5 +150,44 @@ exports.forgotPassword = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Lỗi server!" });
+  }
+};
+exports.googleLogin = async (req, res) => {
+  const { token } = req.body; // token từ frontend (Google Sign-In)
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    const { sub: googleId, email, name, picture } = payload;
+
+    // Kiểm tra user đã tồn tại chưa
+    const [rows] = await pool.query(
+      "SELECT * FROM Users WHERE provider = 'google' AND provider_id = ?",
+      [googleId]
+    );
+
+    let user;
+    if (rows.length > 0) {
+      user = rows[0];
+    } else {
+      // Nếu chưa có -> tạo user mới
+      const [result] = await pool.query(
+        `INSERT INTO Users (username, email, link_thumbnail, provider, provider_id)
+         VALUES (?, ?, ?, 'google', ?)`,
+        [name, email, picture, googleId]
+      );
+      user = { user_id: result.insertId, username: name, email, link_thumbnail: picture };
+    }
+
+    // Tạo JWT token
+    const accessToken = jwt.sign({ userId: user.user_id }, JWT_SECRET, { expiresIn: "7d" });
+
+    res.json({ message: "Đăng nhập Google thành công!", token: accessToken, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Xác thực Google thất bại!" });
   }
 };

@@ -167,7 +167,7 @@ exports.getChapterLastestUpdate = async (req, res) => {
             ON c.story_id = latest.story_id
             AND c.chap_number = latest.latest_chap
             ORDER BY c.created_at DESC
-            LIMIT 15;
+            LIMIT 12;
             `,
         );
 

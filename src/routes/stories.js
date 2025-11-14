@@ -1,11 +1,16 @@
 const express = require("express");
 const upload = require("../config/upload");
 const storiesController = require("../controller/stories.controller");
+const auth = require('../middlewares/middlewares.auth');
 const router = express.Router();
 // Create
 router.post("/", upload.single("cover"), storiesController.createStory);
-
+router.post('/add-bookmark', storiesController.saveReadingProgress);
+router.put("/:id", upload.single("cover"),storiesController.updateStory);
 //get
+
+router.get("/bookmark/:userId/:storyId", storiesController.getReadingProgress);
+router.get("/check-owner/:id", auth(), storiesController.checkOwner);
 router.get("/story/get-all", storiesController.getAllStory)
 router.get("/story/recommendations", storiesController.getTopStoryRecomment)
 router.get("/:id", storiesController.getStory);
@@ -32,7 +37,7 @@ router.get("/check/top-author/week", storiesController.getTopAuthorForWeek);
 router.get("/check/top-user/reader", storiesController.getTopUserReadersStory);
 router.get("/check/just-updated", storiesController.getListStoryUpdated);
 router.get("/favorite/:userId", storiesController.getListFavorites)
-
+router.get("/check/top-user/spending", storiesController.getTopSpendingUsers);
 
 
 router.put('/update/:storyId/status', storiesController.updateStoryStatus)

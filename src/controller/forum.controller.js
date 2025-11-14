@@ -37,7 +37,8 @@ exports.createPost = async (req, res) => {
                     GROUP BY post_id
                 ) c ON p.post_id = c.post_id
                 LEFT JOIN TopicCategory t ON p.topic_id = t.topic_id
-                WHERE p.status = 'published'`,
+                WHERE p.status = 'published'
+                ORDER BY p.created_at DESC;`,
             );
 
             res.status(201).json({ success: true, data: result });

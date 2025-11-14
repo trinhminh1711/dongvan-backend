@@ -84,7 +84,6 @@ exports.sendMail = async (req, res) => {
   }
 };
 exports.supportRequest = async (req, res) => {
-  console.log("BODY:", req.body);
   try {
     const { name, email, title, issue, description } = req.body;
 

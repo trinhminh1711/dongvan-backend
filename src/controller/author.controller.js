@@ -1,6 +1,5 @@
 const pool = require("../config/config.db");
 exports.voteStory = async (req, res) => {
-    console.log(req.body);
 
     const { userId, storyId, coins } = req.body;
 
@@ -155,6 +154,7 @@ exports.giveSupport = async (req, res) => {
             return res.status(400).json({ message: "Thiếu dữ liệu cần thiết" });
         }
 
+        
         // Trừ coin người tặng trước
         const [user] = await pool.query(
             "SELECT coin_balance FROM Users WHERE user_id = ?",
@@ -166,7 +166,7 @@ exports.giveSupport = async (req, res) => {
         }
 
         if (user[0].coin_balance < coins) {
-            return res.status(400).json({ message: "Số coin không đủ" });
+            return res.status(400).json({ message: "Số Tang Diệp không đủ" });
         }
 
         // Transaction

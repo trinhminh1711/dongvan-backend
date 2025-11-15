@@ -104,7 +104,7 @@ exports.supportRequest = async (req, res) => {
     const html = supportRequestTemplate({ name, email, title, issue, description, fileUrl });
 
     await sendMail({
-      to: "minhdeptrai1711@gmail.com", // gửi cho admin
+      to: ["minhdeptrai1711@gmail.com","mvhdongminhtanvan@gmail.com"], // gửi cho admin, // gửi cho admin
       subject: `Yêu cầu hỗ trợ mới từ ${name}`,
       html,
     });
@@ -151,7 +151,7 @@ exports.createRequest = async (req, res) => {
       now.getFullYear();
     const html = rechargeRequestTemplate(user_id, amount, coin)
     await sendMail({
-      to: "minhdeptrai1711@gmail.com", // gửi cho admin
+      to: ["minhdeptrai1711@gmail.com","mvhdongminhtanvan@gmail.com"], // gửi cho admin
       subject: `Yêu cầu duyệt giao dịch`,
       html,
     });

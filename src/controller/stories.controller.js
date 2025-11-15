@@ -215,14 +215,14 @@ exports.getStory = async (req, res) => {
           lc.is_final     AS last_chapter_is_final,
           lc.title        AS last_chapter_title
       FROM Stories s
-      LEFT JOIN chapters c 
+      LEFT JOIN Chapters c 
             ON c.story_id = s.story_id
       LEFT JOIN (
           SELECT c1.story_id, c1.chapter_id, c1.chap_number, c1.title, c1.is_final
-          FROM chapters c1
+          FROM Chapters c1
           WHERE c1.chap_number = (
               SELECT MAX(c2.chap_number)
-              FROM chapters c2
+              FROM Chapters c2
               WHERE c2.story_id = c1.story_id
           )
       ) lc ON lc.story_id = s.story_id
@@ -931,7 +931,7 @@ exports.getTopSpendingUsers = async (req, res) => {
                 SUM(t.amount) AS total_spent,
                 COUNT(t.id) AS total_transactions
             FROM TransactionHistory t
-            JOIN users u ON u.user_id = t.user_id
+            JOIN Users u ON u.user_id = t.user_id
             WHERE t.direction = 'OUT'
             GROUP BY u.user_id, u.username, u.email
             ORDER BY total_spent DESC

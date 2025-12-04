@@ -2,18 +2,36 @@ const pool = require("../config/config.db");
 
 // CREATE
 exports.createPost = async (req, res) => {
-    try {
-        const { user_id, title, content, topic_id } = req.body;
-        const [result] = await pool.query(
-            `INSERT INTO ForumPosts (user_id, title, content, topic_id) VALUES (?,?,?,?)`, [user_id, title, content, topic_id]
-        );
+  try {
+    const { user_id, title, content, topic_id } = req.body;
 
-        res.status(201).json({ success: true, data: result });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: error.message });
+    // 1️⃣ Thêm bài viết mới
+    const [result] = await pool.query(
+      `INSERT INTO ForumPosts (user_id, title, content, topic_id)
+       VALUES (?, ?, ?, ?)`,
+      [user_id, title, content, topic_id]
+    );
+
+    // Lấy ID bài viết vừa thêm
+    const postId = result.insertId;
+
+    // 2️⃣ Nếu topic_id = 1 thì tạo Notification kèm post_id
+    if (Number(topic_id) === 1) {
+      await pool.query(
+        `INSERT INTO notifications (title, message, type, post_id)
+         VALUES (?, ?, 'info', ?)`,
+        [title, content, postId]
+      );
     }
-},
+
+    // 3️⃣ Trả về dữ liệu bài viết vừa thêm
+    res.status(201).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
     exports.getPost = async (req, res) => {
         try {
             const [result] = await pool.query(

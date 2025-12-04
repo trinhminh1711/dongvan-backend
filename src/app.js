@@ -13,8 +13,7 @@ const adminRoutes = require("./routes/admin.routes");
 const forum = require('./routes/forum.routes');
 const mailRoutes = require("./routes/mail.routes");
 const userRoutes = require("./routes/user.routes");
-
-
+const notificationRoutes = require('./routes/notifications.routes'); // đường dẫn tới file routes
 const cors = require("cors");
 
 const app = express();
@@ -22,7 +21,6 @@ app.use(express.json());
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => res.send('API OK'));
-
 // Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
@@ -35,6 +33,7 @@ app.use("/api/author", authorRoutes);
 app.use('/api/story-comment', storyComment);
 app.use('/api/forum', forum);
 app.use('/api', meRoutes);
+app.use('/api/notifications', notificationRoutes)
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));

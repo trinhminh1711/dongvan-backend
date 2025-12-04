@@ -130,11 +130,16 @@ exports.getStoryRate = async (req, res) => {
         const { storyId } = req.params;
 
         const [rows] = await pool.query(
-            `SELECT sr.rating, sr.comment, sr.created_at, u.username
-       FROM StoryRatings sr
-       JOIN Users u ON sr.user_id = u.user_id
-       WHERE sr.story_id = ?
-       ORDER BY sr.created_at DESC`,
+            `SELECT 
+                sr.rating, 
+                sr.comment, 
+                sr.created_at, 
+                u.username,
+                u.link_thumbnail
+                FROM StoryRatings sr
+                JOIN Users u ON sr.user_id = u.user_id
+                WHERE sr.story_id = ?
+                ORDER BY sr.created_at DESC;`,
             [storyId]
         );
 

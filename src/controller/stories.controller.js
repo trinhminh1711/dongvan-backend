@@ -26,7 +26,7 @@ exports.checkOwner = async (req, res) => {
 
 exports.createStory = async (req, res) => {
     try {
-        const { title, description, author_id, link_forum, genres_id } = req.body;
+        const { title, description,pen_name, author_id, link_forum, genres_id } = req.body;
 
         if (!title || !description) {
             return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -61,8 +61,8 @@ exports.createStory = async (req, res) => {
         }
 
         const [result] = await pool.query(
-            "INSERT INTO Stories (title,  description, author_id, urlImg , link_forum, genres_id) VALUES (?, ?, ? , ?,?,?)",
-            [title, description, author_id, coverUrl, link_forum, genres_id]
+            "INSERT INTO Stories (title,  description, author_id, pen_name, urlImg , link_forum, genres_id) VALUES (?, ?, ?,? , ?,?,?)",
+            [title, description, author_id,pen_name, coverUrl, link_forum, genres_id]
         );
 
         res.status(201).json({ success: true, id: result.insertId, message: "Story created", cover: coverUrl });
@@ -335,11 +335,27 @@ exports.getTopStoryReaded = async (req, res) => {
 // GET /api/stories?category=1
 exports.getStoryByCategory = async (req, res) => {
     try {
-        const categoryId = req.params.id;
+        const categoryId = parseInt(req.params.id, 10);
 
         const [rows] = await pool.query(
-            `SELECT s.story_id, s.title, s.description, s.author_id, s.urlImg,s.link_forum, s.create_at, g.name AS genre_name ,g.description AS genre_description FROM Stories s JOIN Genres g ON g.genre_id = s.genres_id WHERE g.genre_id = ?   AND s.status = 'published';`,
-            [categoryId]
+            `
+            SELECT 
+                s.story_id, 
+                s.title, 
+                s.description, 
+                s.author_id, 
+                s.urlImg,
+                s.link_forum, 
+                s.create_at, 
+                g.name AS genre_name,
+                g.description AS genre_description
+            FROM Stories s
+            JOIN Genres g ON g.genre_id = s.genres_id 
+            WHERE 
+                (? NOT BETWEEN 1 AND 11 OR g.genre_id = ?)
+                AND s.status = 'published';
+            `,
+            [categoryId, categoryId] // ✅ truyền 2 lần giá trị
         );
 
         res.json({ success: true, data: rows });
@@ -457,6 +473,7 @@ exports.getUserReadingList = async (req, res) => {
             `SELECT 
                 ur.user_id,
                 s.story_id,
+                s.author_id,
                 s.title AS story_title,
                 s.urlImg AS link_img,
                 u.username AS author_name,    -- lấy tên tác giả
@@ -551,30 +568,35 @@ exports.getListFavorites = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT 
-            sf.user_id,
-            u.username,
-            s.story_id,
-            s.title,
-            s.urlImg,
-            s.author_id,
-            s.description,
-            MAX(c.chap_number) AS total_chapters
-        FROM StoryFavorites sf
-        JOIN Stories s 
-            ON sf.story_id = s.story_id
-        JOIN Users u 
-            ON sf.user_id = u.user_id
-        LEFT JOIN Chapters c
-            ON c.story_id = s.story_id
-        WHERE sf.user_id = ? AND s.status = 'published'
-        GROUP BY 
-            sf.user_id,
-            u.username,
-            s.story_id,
-            s.title,
-            s.urlImg,
-            s.author_id,
-            s.description;
+    sf.user_id,
+    u.username,
+    s.story_id,
+    s.title,
+    s.urlImg,
+    s.author_id,
+    a.username AS author_name,       -- ✅ tên tác giả lấy từ author_id
+    s.description,
+    MAX(c.chap_number) AS total_chapters
+FROM StoryFavorites sf
+JOIN Stories s 
+    ON sf.story_id = s.story_id
+JOIN Users u 
+    ON sf.user_id = u.user_id           -- người dùng yêu thích
+LEFT JOIN Users a 
+    ON s.author_id = a.user_id          -- tác giả truyện
+LEFT JOIN Chapters c
+    ON c.story_id = s.story_id
+WHERE sf.user_id = ? 
+  AND s.status = 'published'
+GROUP BY 
+    sf.user_id,
+    u.username,
+    s.story_id,
+    s.title,
+    s.urlImg,
+    s.author_id,
+    a.username,
+    s.description;
         `,
             [req.params.userId]
         );
@@ -592,24 +614,25 @@ exports.getTopStoryReadedForMonth = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT 
-            s.story_id,
-            s.title AS story_title,
-            s.urlImg,
-            s.author_id,
-            u.username AS author_name,
-            COUNT(cr.id) AS total_reads
-        FROM ChapterReads cr
-        JOIN Chapters c 
-            ON cr.story_id = c.story_id 
-        AND cr.chap_number = c.chap_number
-        JOIN Stories s 
-            ON s.story_id = c.story_id
-        JOIN Users u 
-            ON s.author_id = u.user_id
-        WHERE YEAR(cr.read_at) = YEAR(CURDATE())
-        AND MONTH(cr.read_at) = MONTH(CURDATE()) AND s.status = 'published'
-        GROUP BY s.story_id, s.title, s.urlImg, s.author_id, u.username
-        ORDER BY total_reads DESC
+                s.story_id,
+                s.title AS story_title,
+                s.urlImg,
+                s.author_id,
+                u.username AS author_name,
+                COUNT(cr.id) AS total_reads
+            FROM ChapterReads cr
+            JOIN Chapters c 
+                ON cr.story_id = c.story_id 
+            AND cr.chap_number = c.chap_number
+            JOIN Stories s 
+                ON s.story_id = c.story_id
+            JOIN Users u 
+                ON s.author_id = u.user_id
+            WHERE cr.read_at BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
+                                AND LAST_DAY(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
+            AND s.status = 'published'
+            GROUP BY s.story_id, s.title, s.urlImg, s.author_id, u.username
+            ORDER BY total_reads DESC
             LIMIT ?;`,
             [limit]
         )
@@ -837,22 +860,21 @@ exports.getTopStoryRecomment = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT 
-                sr.user_id,
-                u.username,          -- username của người recommend
-                sr.story_id,
-                s.author_id,
-                a.username AS author_name,  -- username của tác giả
-                sr.coins_spent,
-                sr.created_at,
-                s.title,
-                s.description,
-                s.urlImg
-            FROM StoryRecommendations sr
-            JOIN Stories s ON sr.story_id = s.story_id
-            JOIN Users u ON sr.user_id = u.user_id         -- user recommend
-            JOIN Users a ON s.author_id = a.user_id       -- tác giả
-            ORDER BY sr.coins_spent DESC
-            LIMIT 10;
+    s.story_id,
+    s.title,
+    s.description,
+    s.urlImg,
+    s.author_id,
+    a.username AS author_name,
+    SUM(sr.coins_spent) AS total_coins_spent,           -- tổng Tang Diệp đề cử
+    COUNT(DISTINCT sr.user_id) AS total_users_recommend, -- số người đã đề cử
+    MAX(sr.created_at) AS last_recommend_at              -- lần đề cử gần nhất
+FROM StoryRecommendations sr
+JOIN Stories s ON sr.story_id = s.story_id
+JOIN Users a ON s.author_id = a.user_id
+GROUP BY s.story_id, s.title, s.description, s.urlImg, s.author_id, a.username
+ORDER BY total_coins_spent DESC
+LIMIT 10;
 
                 `
         );
@@ -952,23 +974,44 @@ exports.getTopSpendingUsers = async (req, res) => {
 };
 
 exports.saveReadingProgress = async (req, res) => {
-    const { user_id, story_id, chapter_id, scroll } = req.body;
+  const { user_id, story_id, chapter_id, scroll } = req.body;
 
-    // Kiểm tra dữ liệu đầu vào
-    if (!story_id || !chapter_id) {
-        return res.status(400).json({ error: 'Thiếu story_id hoặc chapter_id' });
-    }
-    console.log(req.body);
-    try {
-        // Ghi hoặc cập nhật tiến độ đọc
-        const [result] = await pool.query(
-            `INSERT INTO ReadingProgress (user_id, story_id, chapter_id, scroll,  updated_at)
-       VALUES (?, ?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE 
-          scroll = VALUES(scroll),
-          updated_at = NOW()`,
+// Kiểm tra dữ liệu đầu vào
+if (!story_id || !chapter_id) {
+    return res.status(400).json({ error: 'Thiếu story_id hoặc chapter_id' });
+}
+console.log(req.body);
+try {
+    // Kiểm tra xem đã tồn tại chưa
+    const [exists] = await pool.query(
+        `SELECT 1 FROM ReadingProgress 
+         WHERE user_id = ? AND story_id = ? AND chapter_id = ?`,
+        [user_id, story_id, chapter_id]
+    );
+
+    let result;
+
+    if (exists.length > 0) {
+        // Nếu đã có → XÓA
+        [result] = await pool.query(
+            `DELETE FROM ReadingProgress 
+             WHERE user_id = ? AND story_id = ? AND chapter_id = ?`,
+            [user_id, story_id, chapter_id]
+        );
+
+        // Trả phản hồi cho client
+        res.status(200).json({
+            success: true,
+            message: 'Đã xóa tiến độ đọc (bỏ bookmark)',
+            affectedRows: result.affectedRows
+        });
+    } else {
+        // Nếu chưa có → THÊM MỚI
+        [result] = await pool.query(
+            `INSERT INTO ReadingProgress (user_id, story_id, chapter_id, scroll, updated_at)
+             VALUES (?, ?, ?, ?, NOW())`,
             [user_id, story_id, chapter_id, scroll]
-        )
+        );
 
         // Trả phản hồi cho client
         res.status(200).json({
@@ -976,10 +1019,12 @@ exports.saveReadingProgress = async (req, res) => {
             message: 'Đã lưu tiến độ đọc thành công',
             affectedRows: result.affectedRows
         });
-    } catch (err) {
-        console.error('Lỗi khi lưu tiến độ đọc:', err);
-        res.status(500).json({ error: 'Lỗi server khi lưu tiến độ đọc' });
     }
+
+} catch (err) {
+    console.error('Lỗi khi lưu tiến độ đọc:', err);
+    res.status(500).json({ error: 'Lỗi server khi lưu tiến độ đọc' });
+}
 };
 
 exports.getReadingProgress = async (req, res) => {

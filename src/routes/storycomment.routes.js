@@ -4,6 +4,7 @@ const storyCommentController = require("../controller/storycomment.controller");
 const router = express.Router();
 // Create
 router.put("/add", storyCommentController.createComment);
-router.post("/add-like", storyCommentController.increaseLikeComment);
+router.put("/add", storyCommentController.createComment);
+router.post("/comment/reply", storyCommentController.addReply);
 
 module.exports = router;

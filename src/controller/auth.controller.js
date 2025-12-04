@@ -81,7 +81,7 @@ exports.login = async (req, res) => {
     const user = rows[0];
 
     if (user.provider !== 'local') {
-      return res.status(400).json({ error: `Account registered via ${user.provider}. Please use social login.` });
+      return res.status(400).json({ error: `Email đã được đăng ký. Vui lòng đăng nhập Google để tiếp tục` });
     }
     if (user.status !== 'active') {
       return res.status(403).json({
@@ -89,7 +89,7 @@ exports.login = async (req, res) => {
       });
     }
     const ok = await bcrypt.compare(password, user.password_hash || '');
-    if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
+    if (!ok) return res.status(401).json({ error: 'Thông tin đăng nhập không tồn tại!' });
 
     const token = jwt.sign(
       { user_id: user.user_id, email: user.email, role: user.role },
@@ -165,7 +165,7 @@ exports.googleLogin = async (req, res) => {
 
     // Kiểm tra user đã tồn tại chưa
     const [rows] = await pool.query(
-      "SELECT * FROM Users WHERE provider = 'google' AND provider_id = ?",
+      "SELECT * FROM Users WHERE provider = 'google' AND provider_uid = ?",
       [googleId]
     );
 
@@ -175,16 +175,20 @@ exports.googleLogin = async (req, res) => {
     } else {
       // Nếu chưa có -> tạo user mới
       const [result] = await pool.query(
-        `INSERT INTO Users (username, email, link_thumbnail, provider, provider_id)
+        `INSERT INTO Users (username, email, link_thumbnail, provider, provider_uid)
          VALUES (?, ?, ?, 'google', ?)`,
         [name, email, picture, googleId]
       );
       user = { user_id: result.insertId, username: name, email, link_thumbnail: picture };
     }
 
-    // Tạo JWT token
-    const accessToken = jwt.sign({ userId: user.user_id }, JWT_SECRET, { expiresIn: "7d" });
+    const accessToken = jwt.sign(
+      { user_id: user.user_id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES || '2h' }
+    );
 
+    // Trả về frontend
     res.json({ message: "Đăng nhập Google thành công!", token: accessToken, user });
   } catch (err) {
     console.error(err);

@@ -7,6 +7,8 @@ const router = express.Router();
 router.post("/", upload.single("cover"), storiesController.createStory);
 router.post('/add-bookmark', storiesController.saveReadingProgress);
 router.put("/:id", upload.single("cover"),storiesController.updateStory);
+router.post('/:storyId/follow', storiesController.followStory);
+router.delete('/:storyId/unfollow', storiesController.unfollowStory);
 //get
 
 router.get("/bookmark/:userId/:storyId", storiesController.getReadingProgress);
@@ -26,7 +28,7 @@ router.get("/:id/comments", storiesController.getCommentStory)
 router.post("/story/reading", storiesController.insertUserReadingBook)
 router.get("/user/reading/:user_id", storiesController.getUserReadingList)
 router.post("/user-story/favorite", storiesController.addFavorite)
-
+router.get('/user/follow-story/:userId', storiesController.getFollowedStories);
 router.get("/random/story", storiesController.getRandomStory)
 router.get("/complete/story", storiesController.getStoryComplete)
 

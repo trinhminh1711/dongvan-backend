@@ -109,43 +109,56 @@ exports.rateStory = async (req, res) => {
         }
 
         await pool.query(
-            `INSERT INTO StoryRatings (user_id, story_id, rating, comment)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE 
-          rating = VALUES(rating),
-          comment = VALUES(comment),
-          updated_at = CURRENT_TIMESTAMP`,
+            `INSERT INTO StoryRatings (user_id, story_id, rating, comment, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
             [userId, storyId, rating, comment || null]
         );
 
-        res.status(201).json({ message: "Rating submitted successfully" });
+        res.status(201).json({ success: true, message: "Rating saved successfully" });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
+        console.error("❌ Error rating story:", err);
+        res.status(500).json({ success: false, message: "Server error" });
     }
-}
+};
 
 exports.getStoryRate = async (req, res) => {
     try {
         const { storyId } = req.params;
 
+        // Lấy danh sách chi tiết từng đánh giá
         const [rows] = await pool.query(
             `SELECT 
-                sr.rating, 
-                sr.comment, 
-                sr.created_at, 
-                u.username,
-                u.link_thumbnail
-                FROM StoryRatings sr
-                JOIN Users u ON sr.user_id = u.user_id
-                WHERE sr.story_id = ?
-                ORDER BY sr.created_at DESC;`,
+      sr.id,
+      sr.rating, 
+      sr.comment, 
+      sr.created_at, 
+      u.username,
+      u.link_thumbnail
+   FROM StoryRatings sr
+   JOIN Users u ON sr.user_id = u.user_id
+   WHERE sr.story_id = ?
+   ORDER BY sr.created_at DESC`,
             [storyId]
         );
 
-        res.json(rows);
+        // Lấy điểm trung bình & tổng lượt đánh giá
+        const [[summary]] = await pool.query(
+            `SELECT 
+          ROUND(AVG(rating), 1) AS average_rating,
+          COUNT(*) AS total_reviews
+       FROM StoryRatings
+       WHERE story_id = ?`,
+            [storyId]
+        );
+
+        res.json({
+            success: true,
+            average_rating: summary.average_rating || 0,
+            total_reviews: summary.total_reviews || 0,
+            data: rows,
+        });
     } catch (err) {
-        console.error(err);
+        console.error("❌ Lỗi khi lấy đánh giá truyện:", err);
         res.status(500).json({ message: "Server error" });
     }
 };
@@ -159,7 +172,7 @@ exports.giveSupport = async (req, res) => {
             return res.status(400).json({ message: "Thiếu dữ liệu cần thiết" });
         }
 
-        
+
         // Trừ coin người tặng trước
         const [user] = await pool.query(
             "SELECT coin_balance FROM Users WHERE user_id = ?",
@@ -247,38 +260,38 @@ exports.giveSupport = async (req, res) => {
 };
 
 exports.getUserTransactions = async (req, res) => {
-  try {
-  const { user_id } = req.params;
-  const { start_date, end_date } = req.query; // nhận query param từ frontend
+    try {
+        const { user_id } = req.params;
+        const { start_date, end_date } = req.query; // nhận query param từ frontend
 
-  if (!user_id) {
-    return res.status(400).json({ message: "Thiếu user_id" });
-  }
+        if (!user_id) {
+            return res.status(400).json({ message: "Thiếu user_id" });
+        }
 
-  let sql = `
+        let sql = `
     SELECT id, type, amount, direction, status, description, created_at
     FROM TransactionHistory
     WHERE user_id = ?
   `;
-  const params = [user_id];
+        const params = [user_id];
 
-  // Nếu có start_date và end_date, thêm điều kiện lọc
-  if (start_date && end_date) {
-    sql += ` AND created_at BETWEEN ? AND ?`;
-    params.push(start_date, end_date);
-  }
+        // Nếu có start_date và end_date, thêm điều kiện lọc
+        if (start_date && end_date) {
+            sql += ` AND created_at BETWEEN ? AND ?`;
+            params.push(start_date, end_date);
+        }
 
-  sql += ` ORDER BY created_at DESC`;
+        sql += ` ORDER BY created_at DESC`;
 
-  const [transactions] = await pool.query(sql, params);
+        const [transactions] = await pool.query(sql, params);
 
-  res.status(200).json({
-    user_id,
-    transactions
-  });
+        res.status(200).json({
+            user_id,
+            transactions
+        });
 
-} catch (err) {
-  console.error(err);
-  res.status(500).json({ message: "Lỗi server khi lấy lịch sử giao dịch" });
-}
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Lỗi server khi lấy lịch sử giao dịch" });
+    }
 };

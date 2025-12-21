@@ -4,7 +4,7 @@ const upload = require("../config/upload");
 const userData = require('../controller/profile.controller');
 const router = express.Router();
 router.get('/:userId', auth(), userData.profileUser);
-router.get('/post-info/:userId', auth(), userData.getInfoUserPost);
+router.get('/post-info/:userId', userData.getInfoUserPost);
 router.post('/change-password', auth(), userData.changePassword);
 router.put("/update-info", auth(), upload.single("link_thumbnail"), userData.updateUserInfo);
 module.exports = router;

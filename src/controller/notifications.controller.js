@@ -12,8 +12,8 @@ exports.getNotifications = async (req, res) => {
       `SELECT 
           n.*,
           CASE WHEN r.id IS NULL THEN 0 ELSE 1 END AS is_read
-       FROM notifications n
-       LEFT JOIN notification_reads r
+       FROM Notifications n
+       LEFT JOIN Notification_reads r
          ON n.id = r.notification_id AND r.user_id = ?
        WHERE n.target_user_id IS NULL OR n.target_user_id = ?
        ORDER BY n.created_at DESC`,
@@ -38,7 +38,7 @@ exports.markNotificationAsRead = async (req, res) => {
     // Thêm record vào bảng notification_reads
     // Nếu đã tồn tại thì update lại thời gian read_at
     await pool.query(
-      `INSERT INTO notification_reads (notification_id, user_id, read_at)
+      `INSERT INTO Notification_reads (notification_id, user_id, read_at)
        VALUES (?, ?, NOW())
        ON DUPLICATE KEY UPDATE read_at = NOW()`,
       [notification_id, user_id]
@@ -57,10 +57,10 @@ exports.markAllNotificationAsRead = async (req, res) => {
     const { user_id } = req.body;
     // Cập nhật tất cả notification chưa đọc cho user
     await pool.query(
-      `INSERT INTO notification_reads (notification_id, user_id, read_at)
+      `INSERT INTO Notification_reads (notification_id, user_id, read_at)
        SELECT id, ? , NOW()
-       FROM notifications
-       WHERE id NOT IN (SELECT notification_id FROM notification_reads WHERE user_id = ?)
+       FROM Notifications
+       WHERE id NOT IN (SELECT notification_id FROM Notification_reads WHERE user_id = ?)
          AND (target_user_id IS NULL OR target_user_id = ?)`,
       [user_id, user_id, user_id]
     );

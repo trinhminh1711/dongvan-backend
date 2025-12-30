@@ -218,42 +218,68 @@ exports.getPaymentRequest = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 }
-exports.approveTrantion = async (req, res) => {
+exports.approveTransaction = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { id } = req.params;
 
-    // Lấy giao dịch
-    const [rows] = await pool.query(
-      "SELECT user_id, coin, is_duyet FROM RequestsTransactions WHERE id = ?",
+    await connection.beginTransaction();
+
+    // 1. Lấy giao dịch chờ duyệt
+    const [rows] = await connection.query(
+      "SELECT user_id, coin, is_duyet FROM RequestsTransactions WHERE id = ? FOR UPDATE",
       [id]
     );
 
     if (rows.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ success: false, message: "Transaction not found" });
     }
 
     const transaction = rows[0];
 
+    // 2. Kiểm tra đã duyệt chưa
     if (transaction.is_duyet === 1) {
+      await connection.rollback();
       return res.status(400).json({ success: false, message: "Transaction already approved" });
     }
 
-    // Update trạng thái giao dịch
-    await pool.query(
+    // 3. Cập nhật trạng thái giao dịch
+    await connection.query(
       "UPDATE RequestsTransactions SET is_duyet = 1 WHERE id = ?",
       [id]
     );
 
-    // Cộng coin vào user
-    await pool.query(
+    // 4. Cộng coin cho user
+    await connection.query(
       "UPDATE Users SET coin_balance = coin_balance + ? WHERE user_id = ?",
       [transaction.coin, transaction.user_id]
     );
 
-    res.json({ success: true, message: "Transaction approved and coins added" });
+    // 5. ✅ Ghi log lịch sử giao dịch
+    const description = `Nạp ${transaction.coin} Tang Diệp vào tài khoản`;
+    await connection.query(
+      `INSERT INTO TransactionHistory (user_id, type, amount, direction, status, description, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        transaction.user_id,    // user_id
+        'NAP_TIEN',             // type
+        transaction.coin,       // amount
+        'IN',                   // direction (vì là nạp tiền)
+        'SUCCESS',              // status
+        description              // description hiển thị lịch sử
+      ]
+    );
 
+    // 6. Hoàn tất
+    await connection.commit();
+
+    res.json({ success: true, message: "Transaction approved, coins added, and history recorded" });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error(error);
     res.status(500).json({ success: false, message: "Server error" });
+  } finally {
+    if (connection) connection.release();
   }
-}
+};

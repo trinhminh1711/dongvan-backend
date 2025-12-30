@@ -18,7 +18,7 @@ exports.createPost = async (req, res) => {
     // 2️⃣ Nếu topic_id = 1 thì tạo Notification kèm post_id
     if (Number(topic_id) === 1) {
       await pool.query(
-        `INSERT INTO notifications (title, message, type, post_id)
+        `INSERT INTO Notifications (title, message, type, post_id)
          VALUES (?, ?, 'info', ?)`,
         [title, content, postId]
       );

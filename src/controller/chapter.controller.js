@@ -242,3 +242,79 @@ exports.unlockChapters = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.getCommentsByChapter = async (req, res) => {
+  try {
+    const { storyId, chapNumber } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT c.*, u.username, u.link_thumbnail AS avatar
+       FROM CommentChapter c
+       JOIN Users u ON c.user_id = u.user_id
+       WHERE c.story_id = ? 
+         AND c.chap_number = ?
+         AND c.is_deleted = 0
+       ORDER BY c.created_at DESC`,
+      [storyId, chapNumber]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+/**
+ * 💬 Thêm bình luận mới
+ * POST /api/stories/:storyId/chapters/:chapNumber/comments
+ */
+exports.addComment = async (req, res) => {
+  try {
+    const { storyId, chapNumber } = req.params;
+    const { userId, content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Nội dung bình luận không được để trống" });
+    }
+
+    await pool.query(
+      `INSERT INTO CommentChapter (story_id, chap_number, user_id, content)
+       VALUES (?, ?, ?, ?)`,
+      [storyId, chapNumber, userId, content.trim()]
+    );
+
+    res.json({ success: true, message: "Bình luận đã được thêm" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+/**
+ * ❌ Xóa bình luận (ẩn mềm)
+ * DELETE /api/comments/:commentId
+ */
+exports.deleteComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const [result] = await pool.query(
+      `UPDATE CommentChapter
+       SET is_deleted = 1
+       WHERE comment_id = ?`,
+      [commentId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bình luận" });
+    }
+
+    res.json({ success: true, message: "Đã xóa bình luận" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};

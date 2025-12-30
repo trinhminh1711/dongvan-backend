@@ -78,12 +78,10 @@ exports.createStory = async (req, res) => {
 exports.updateStory = async (req, res) => {
   try {
     const { id } = req.params;
-    // Bổ sung pen_name vào destructuring nếu bạn muốn cho phép cập nhật pen_name tại đây
-    const { title, genres_id, description, pen_name } = req.body;
+    const { title, genres_id, description, pen_name, link_forum } = req.body; // 👈 thêm link_forum ở đây
 
     let coverUrl = null;
 
-    // Nếu có file upload -> upload lên Cloudinary
     if (req.file) {
       coverUrl = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -97,14 +95,14 @@ exports.updateStory = async (req, res) => {
       });
     }
 
-    // Xây dựng query linh hoạt
     let fieldsToUpdate = [];
     let params = [];
 
     if (title !== undefined) { fieldsToUpdate.push("title = ?"); params.push(title); }
     if (genres_id !== undefined) { fieldsToUpdate.push("genres_id = ?"); params.push(genres_id); }
     if (description !== undefined) { fieldsToUpdate.push("description = ?"); params.push(description); }
-    if (pen_name !== undefined) { fieldsToUpdate.push("pen_name = ?"); params.push(pen_name); } // Thêm pen_name
+    if (pen_name !== undefined) { fieldsToUpdate.push("pen_name = ?"); params.push(pen_name); }
+    if (link_forum !== undefined) { fieldsToUpdate.push("link_forum = ?"); params.push(link_forum); } // 👈 thêm dòng này
     if (coverUrl !== null) { fieldsToUpdate.push("urlImg = ?"); params.push(coverUrl); }
 
     if (fieldsToUpdate.length === 0) {
@@ -135,6 +133,7 @@ exports.updateStory = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Xóa Story.
@@ -426,58 +425,71 @@ exports.getAllDataStory = async (req, res) => {
 
     const [rows] = await pool.query(
       `
-                SELECT 
-                    s.urlImg, 
-                    s.story_id, 
-                    s.title AS story_title, 
-                    s.description, 
-                    u.user_id, 
-                    -- 🚀 LOGIC ĐÃ SỬA: Ưu tiên pen_name, nếu NULL thì dùng username
-                    COALESCE(s.pen_name, u.username) AS author_name, 
-                    c.chapter_id, 
-                    c.chap_number,
-                    c.is_vip,
-                    c.title AS chapter_title, 
-                    c.view_count, 
-                    c.word_count, 
-                    c.created_at,
-                    COALESCE(totals.total_view, 0) AS total_view, 
-                    COALESCE(totals.total_word, 0) AS total_word,
-                    COALESCE(user_reads.total_reads, 0) AS total_reads,
-                    COALESCE(votes.total_votes, 0) AS total_votes
-                FROM Stories s
-                JOIN Users u 
-                    ON s.author_id = u.user_id
-                LEFT JOIN Chapters c 
-                    ON s.story_id = c.story_id
-                LEFT JOIN (
-                    SELECT 
-                        story_id, 
-                        SUM(view_count) AS total_view, 
-                        SUM(word_count) AS total_word
-                    FROM Chapters 
-                    GROUP BY story_id
-                ) totals 
-                    ON totals.story_id = s.story_id
-                LEFT JOIN (
-                    SELECT 
-                        story_id, 
-                        COUNT(*) AS total_reads
-                    FROM UserReading 
-                    GROUP BY story_id
-                ) user_reads 
-                    ON user_reads.story_id = s.story_id
-                LEFT JOIN (
-                    SELECT 
-                        story_id, 
-                        COUNT(*) AS total_votes
-                    FROM StoryRecommendations 
-                    GROUP BY story_id
-                ) votes 
-                    ON votes.story_id = s.story_id
-                WHERE s.story_id = ? 
-                AND s.status = ?
-                ORDER BY c.chap_number ASC;
+          SELECT 
+    s.urlImg, 
+    s.story_id, 
+    s.title AS story_title, 
+    s.description, 
+    u.user_id, 
+    COALESCE(s.pen_name, u.username) AS author_name, 
+    c.chapter_id, 
+    c.chap_number,
+    c.is_vip,
+    c.title AS chapter_title, 
+    c.view_count, 
+    c.word_count, 
+    c.created_at,
+    COALESCE(totals.total_view, 0) AS total_view, 
+    COALESCE(totals.total_word, 0) AS total_word,
+    COALESCE(user_reads.total_reads, 0) AS total_reads,
+    COALESCE(votes.total_votes, 0) AS total_votes,
+    g.name AS genre_name,
+    COALESCE(is_final_check.is_final, 0) AS is_final  -- ✅ trạng thái hoàn thành của truyện
+FROM Stories s
+JOIN Users u 
+    ON s.author_id = u.user_id
+LEFT JOIN Genres g 
+    ON s.genres_id = g.genre_id
+LEFT JOIN Chapters c 
+    ON s.story_id = c.story_id
+LEFT JOIN (
+    SELECT 
+        story_id, 
+        SUM(view_count) AS total_view, 
+        SUM(word_count) AS total_word
+    FROM Chapters 
+    GROUP BY story_id
+) totals 
+    ON totals.story_id = s.story_id
+LEFT JOIN (
+    SELECT 
+        story_id, 
+        COUNT(*) AS total_reads
+    FROM UserReading 
+    GROUP BY story_id
+) user_reads 
+    ON user_reads.story_id = s.story_id
+LEFT JOIN (
+    SELECT 
+        story_id, 
+        COUNT(*) AS total_votes
+    FROM StoryRecommendations 
+    GROUP BY story_id
+) votes 
+    ON votes.story_id = s.story_id
+LEFT JOIN (
+    SELECT 
+        story_id, 
+        MAX(is_final) AS is_final   -- ✅ kiểm tra có chương nào là final hay không
+    FROM Chapters
+    GROUP BY story_id
+) is_final_check 
+    ON is_final_check.story_id = s.story_id
+WHERE s.story_id = ? 
+AND s.status = ?
+ORDER BY c.chap_number ASC;
+
+
       `,
       [story_id, status]
     );
@@ -700,7 +712,6 @@ exports.getTopStoryReadedForMonth = async (req, res) => {
                 s.title AS story_title,
                 s.urlImg,
                 s.author_id,
-                -- 🚀 LOGIC ĐÃ SỬA: Ưu tiên pen_name, nếu NULL thì dùng username
                 COALESCE(s.pen_name, u.username) AS author_name,
                 COUNT(cr.id) AS total_reads
             FROM ChapterReads cr
@@ -711,9 +722,8 @@ exports.getTopStoryReadedForMonth = async (req, res) => {
                 ON s.story_id = c.story_id
             JOIN Users u 
                 ON s.author_id = u.user_id
-            WHERE cr.read_at BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
-                                AND LAST_DAY(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-            AND s.status = 'published'
+            WHERE s.status = 'published'
+              AND cr.read_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             GROUP BY s.story_id, s.title, s.urlImg, s.author_id, author_name
             ORDER BY total_reads DESC
             LIMIT ?;`,

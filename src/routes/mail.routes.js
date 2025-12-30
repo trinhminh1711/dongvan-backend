@@ -16,5 +16,5 @@ router.post("/support/request", upload.single("file"), mailController.supportReq
 // API lấy danh sách yêu cầu hỗ trợ
 router.get("/support/request", mailController.getSupportRequest);
 router.get("/payment/request", mailController.getPaymentRequest);
-router.put("/transactions/:id/approve" , mailController.approveTrantion)
+router.put("/transactions/:id/approve" , mailController.approveTransaction)
 module.exports = router;

@@ -16,6 +16,6 @@ router.post("/post-forum/post/add-like", forumController.toggleLikePost);
 router.post("/post-forum/comments/reply", forumController.createReply);
 
 router.put("/post-forum/update/:postId/status", auth(["master_admin", "content_admin"]), forumController.updatePostStatus);
-
+router.put("/post-forum/:postId/update-time", forumController.updatePostCreatedAt);
 router.get("/post-forum/admin/get-post", auth(["master_admin", "content_admin"]), forumController.getAllPostAdmin);
 module.exports = router;

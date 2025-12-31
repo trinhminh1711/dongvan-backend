@@ -441,3 +441,28 @@ exports.updatePostStatus = async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 };
+
+exports.updatePostCreatedAt = async (req, res) => {
+  try {
+    const { postId } = req.params; // /posts/:postId/update-time
+
+    const [result] = await pool.query(
+      "UPDATE ForumPosts SET created_at = NOW() WHERE post_id = ?",
+      [postId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Không tìm thấy bài viết" });
+    }
+
+    res.json({
+      message: "Cập nhật thời gian tạo thành công",
+      postId,
+      new_time: new Date().toISOString(),
+      success: true,
+    });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật created_at:", error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};

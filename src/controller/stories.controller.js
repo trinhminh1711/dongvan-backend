@@ -300,33 +300,42 @@ exports.getRandomStory = async (req, res) => {
  */
 exports.getStoryComplete = async (req, res) => {
   let limit = parseInt(req.query.limit, 10);
+  let offset = parseInt(req.query.offset, 10);
+
   if (Number.isNaN(limit) || limit <= 0) limit = 10;
   limit = Math.min(limit, 100);
+
+  // ✅ offset mặc định = 0
+  if (Number.isNaN(offset) || offset < 0) offset = 0;
+
   try {
     const [rows] = await pool.query(
       `SELECT 
-      s.*,
-      c.chap_number,
-      g.name AS genre_name,
-      COALESCE(s.pen_name, u.username) AS author_name,
-      u.user_id AS author_id
-   FROM Stories s
-   JOIN Chapters c 
-       ON c.story_id = s.story_id
-   JOIN Genres g 
-       ON s.genres_id = g.genre_id
-   JOIN Users u 
-       ON s.author_id = u.user_id
-   WHERE c.is_final = 1  AND s.status = 'published'
-   LIMIT ?`,
-      [limit]
-    )
-    res.json(rows)
+        s.*,
+        c.chap_number,
+        g.name AS genre_name,
+        COALESCE(s.pen_name, u.username) AS author_name,
+        u.user_id AS author_id
+       FROM Stories s
+       JOIN Chapters c 
+           ON c.story_id = s.story_id
+       JOIN Genres g 
+           ON s.genres_id = g.genre_id
+       JOIN Users u 
+           ON s.author_id = u.user_id
+       WHERE c.is_final = 1  
+         AND s.status = 'published'
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    res.json(rows);
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ message: "Server error" })
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
-}
+};
+
 
 /**
  * Lấy Top Story được đọc nhiều nhất (tổng thể).
@@ -429,7 +438,8 @@ exports.getAllDataStory = async (req, res) => {
     s.urlImg, 
     s.story_id, 
     s.title AS story_title, 
-    s.description, 
+    s.description,
+    s.genres_id,
     u.user_id, 
     COALESCE(s.pen_name, u.username) AS author_name, 
     c.chapter_id, 

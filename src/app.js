@@ -1,5 +1,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
+
 dotenv.config();
 
 const authRoutes = require('./routes/auth.routes');
@@ -13,7 +14,8 @@ const adminRoutes = require("./routes/admin.routes");
 const forum = require('./routes/forum.routes');
 const mailRoutes = require("./routes/mail.routes");
 const userRoutes = require("./routes/user.routes");
-const notificationRoutes = require('./routes/notifications.routes'); // đường dẫn tới file routes
+const notificationRoutes = require('./routes/notifications.routes');
+const uploadChapImage = require('./routes/upload.routes');
 const cors = require("cors");
 
 const app = express();
@@ -33,6 +35,7 @@ app.use("/api/author", authorRoutes);
 app.use('/api/story-comment', storyComment);
 app.use('/api/forum', forum);
 app.use('/api', meRoutes);
+app.use('/api/upload',uploadChapImage)
 app.use('/api/notifications', notificationRoutes)
 
 // 404

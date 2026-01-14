@@ -1,7 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
-const auth = require('../middlewares/middlewares.auth');
-const { register, login , googleLogin} = require('../controller/auth.controller');
+const { register, login, googleLogin, verifyEmail, resendCode } = require('../controller/auth.controller');
 
 const router = express.Router();
 
@@ -23,5 +22,25 @@ router.post(
   ],
   login
 );
+
 router.post('/login/google', googleLogin);
+
+// ✅ Thêm hai route mới:
+router.post(
+  '/verify-email',
+  [
+    body('email').isEmail().withMessage('valid email required'),
+    body('code').notEmpty().withMessage('verification code required'),
+  ],
+  verifyEmail
+);
+
+router.post(
+  '/resend-code',
+  [
+    body('email').isEmail().withMessage('valid email required'),
+  ],
+  resendCode
+);
+
 module.exports = router;
